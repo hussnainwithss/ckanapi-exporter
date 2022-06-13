@@ -5,10 +5,12 @@ import ast
 import ckanapi
 import losser.losser
 import losser.cli
+import pandas as pd
 import math
 
 
-VERSION = '0.1.0'
+VERSION = "0.1.0"
+
 
 def get_datasets_from_ckan(url, apikey, params=None):
     """Gets the datasets from CKAN API and passed in parameters
@@ -28,29 +30,27 @@ def get_datasets_from_ckan(url, apikey, params=None):
         All the datasets requested in an array.
 
     """
-    user_agent = ('ckanapi-exporter/{version} '
-                  '(+https://github.com/ckan/ckanapi-exporter)').format(
-                          version=VERSION)
-    api = ckanapi.RemoteCKAN(url, apikey=apikey, user_agent=user_agent)
+    user_agent = (
+        "ckanapi-exporter/{version} " "(+https://github.com/ckan/ckanapi-exporter)"
+    ).format(version=VERSION)
+    api = ckanapi.RemoteCKAN(url, apikey=apikey)
 
-    #find out if there are more than the hard coded 1000 datasets and how many pages
-    arguments = {'rows': 1000, 'start': 0}
+    # find out if there are more than the hard coded 1000 datasets and how many pages
+    arguments = {"rows": 1000, "start": 0}
     if params is not None:
         params_dict = ast.literal_eval(params)
         arguments.update(params_dict)
-
-    response = api.call_action('package_search', arguments)
-    num_pages = int(math.ceil(response['count']/1000.0))
-
-    #loop over to collect up all datasets from the CKAN instance
+    response = api.call_action("package_search", arguments)
+    num_pages = int(math.ceil(response["count"] / 1000.0))
+    # loop over to collect up all datasets from the CKAN instance
     datasets = []
     for page in range(0, num_pages):
-        arguments['start'] = page * 1000
-        paged_response = api.call_action('package_search', arguments)
-        #merge these results into one dictionary
+        arguments["start"] = page * 1000
+        paged_response = api.call_action("package_search", arguments)
+        # merge these results into one dictionary
         datasets.extend(paged_response["results"])
 
-    #return the large array to go about it's business
+    # return the large array to go about it's business
     return datasets
 
 
@@ -68,14 +68,12 @@ def extras_to_dicts(datasets):
 def export(url, columns, apikey=None, params=None, pretty=False):
     datasets = get_datasets_from_ckan(url, apikey, params)
     extras_to_dicts(datasets)
-    csv_string = losser.losser.table(datasets, columns, csv=True,
-                                     pretty=pretty)
-    return csv_string
+    df = pd.DataFrame.from_dict(datasets).filter(items=list(columns.keys()))
+    df.to_csv("output.csv", encoding="utf-8")
 
 
 def main(args=None):
-    parent_parser = losser.cli.make_parser(
-        add_help=False, exclude_args=["-i"])
+    parent_parser = losser.cli.make_parser(add_help=False, exclude_args=["-i"])
     parser = argparse.ArgumentParser(
         description="Export datasets from a CKAN site to JSON or CSV.",
         parents=[parent_parser],
@@ -83,19 +81,19 @@ def main(args=None):
     parser.add_argument(
         "--url",
         help="the root URL of the CKAN site to export datasets from, "
-             "for example: 'http://demo.ckan.org'",
+        "for example: 'http://demo.ckan.org'",
         required=True,
     )
     parser.add_argument(
         "--apikey",
         help="the API key to use when fetching datasets from the CKAN site, "
-             "use this option if you want to export private datasets as well "
-             "as public ones",
-        )
+        "use this option if you want to export private datasets as well "
+        "as public ones",
+    )
     parser.add_argument(
         "--params",
         help="a dictionary of CKAN API parameters passed into the export query",
-        )
+    )
     try:
         parsed_args = losser.cli.parse(parser=parser)
     except losser.cli.CommandLineExit as err:
@@ -103,10 +101,15 @@ def main(args=None):
     except losser.cli.CommandLineError as err:
         if err.message:
             parser.error(err.message)
-    csv_string = export(
-        parsed_args.url, parsed_args.columns, parsed_args.apikey,
-        parsed_args.params, pretty=parsed_args.pretty)
-    sys.stdout.write(csv_string)
+    export(
+        parsed_args.url,
+        parsed_args.columns,
+        parsed_args.apikey,
+        parsed_args.params,
+        pretty=parsed_args.pretty,
+    )
+
+    # sys.stdout.write(csv_string)
 
 
 if __name__ == "__main__":
